@@ -235,7 +235,7 @@ export default function App() {
 
         // Forschung
         const reportsAll = await pb.collection('spy_reports').getFullList({
-            filter: pb.filter('player = {:pid}', {pid: player.id}), sort: '-timestamp'
+            filter: pb.filter('player = {:pid}', {pid: player.id}), sort: '-created'
         })
         const latest = reportsAll[0] || null
         setLatestReport(latest)
