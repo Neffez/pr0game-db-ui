@@ -233,13 +233,15 @@ export default function App() {
     const loadPlayerData = async (player) => {
         setSelectedPlayer(player)
 
-        // Forschung
         const reportsAll = await pb.collection('spy_reports').getFullList({
             filter: pb.filter('player = {:pid}', {pid: player.id}), sort: '-created'
         })
-        const latest = reportsAll[0] || null
-        setLatestReport(latest)
-        setResearch(latest ? latest.cat100 : {})
+        const withResearch = reportsAll.filter(r =>
+            r.cat100 && Object.values(r.cat100).some(v => v > 0)
+        )
+        const latest = withResearch[0] || null
+        setLatestReport(latest);
+        setResearch(latest ? latest.cat100 : {});
 
         // Galaxy state
         const states = await pb.collection('galaxy_state').getFullList({
