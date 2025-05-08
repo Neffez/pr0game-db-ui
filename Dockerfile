@@ -11,7 +11,11 @@ ARG REPO_BRANCH=master
 
 RUN git clone --depth 1 --branch ${REPO_BRANCH} ${REPO_URL} .
 
-RUN npm ci
+RUN if [ -f package-lock.json ] ; then \
+      npm ci ; \
+    else \
+      npm install ; \
+    fi
 
 ARG VITE_PB_URL
 ENV VITE_PB_URL=${VITE_PB_URL}
