@@ -321,9 +321,6 @@ export default function App() {
                 <Box sx={{ position: 'relative', zIndex: 0 }}>
                     <AppBar position="static">
                         <Toolbar>
-                            <Typography sx={{ flex: 1 }} variant="h6">
-                                Die aaligste pr0game UI des Universums 🐟
-                            </Typography>
                             <Tabs
                                 value={tabValue}
                                 onChange={(e, newVal) => setTabValue(newVal)}
