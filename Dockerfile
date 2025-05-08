@@ -7,7 +7,7 @@ RUN apk add --no-cache git
 WORKDIR /app
 
 ARG REPO_URL=https://github.com/Neffez/pr0game-db-ui.git
-ARG REPO_BRANCH=main
+ARG REPO_BRANCH=master
 
 RUN git clone --depth 1 --branch ${REPO_BRANCH} ${REPO_URL} .
 
