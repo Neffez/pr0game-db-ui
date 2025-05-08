@@ -50,7 +50,7 @@ const locMap = {
     "42": "Sensorphalanx",
     "43": "Sprungtor",
     "44": "Raketensilo",
-    "401": "Raks",
+    "401": "Raketenwerfer",
     "402": "Leichtes Lasergeschütz",
     "403": "Schweres Lasergeschütz",
     "404": "Gausskanone",
