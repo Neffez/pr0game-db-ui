@@ -107,6 +107,7 @@ export default function App() {
     const [celestials, setCelestials] = useState({planets: [], moons: []})
     const [spyReports, setSpyReports] = useState({})
     const [alliances, setAlliances] = useState({})
+    const [latestReport, setLatestReport] = useState(null)
     // Phalanx states
     const [phalanxSearch, setPhalanxSearch] = useState('')
     const [phalanxResults, setPhalanxResults] = useState([])
@@ -236,7 +237,9 @@ export default function App() {
         const reportsAll = await pb.collection('spy_reports').getFullList({
             filter: pb.filter('player = {:pid}', {pid: player.id}), sort: '-timestamp'
         })
-        setResearch((reportsAll[0] || {}).cat100 || {})
+        const latest = reportsAll[0] || null
+        setLatestReport(latest)
+        setResearch(latest ? latest.cat100 : {})
 
         // Galaxy state
         const states = await pb.collection('galaxy_state').getFullList({
@@ -336,127 +339,142 @@ export default function App() {
                         {/* Spielersuche */}
                         {tabValue === 0 && (
                             <>
-                        <TextField
-                            label="Spielername"
-                            value={search}
-                            onChange={handleSearchChange}
-                            fullWidth
-                            sx={{ mb: 2 }}
-                        />
-                        <Paper sx={{ mb: 3 }}>
-                            {players.map(p => (
-                                <Box
-                                    key={p.id}
-                                    sx={{ p: 1, borderBottom: '1px solid #333', cursor: 'pointer' }}
-                                    onClick={() => loadPlayerData(p)}
-                                >
-                                    {p.player_name} {alliances[p.alli_id] ? `(${alliances[p.alli_id]})` : ''}
-                                </Box>
-                            ))}
-                        </Paper>
+                                <TextField
+                                    label="Spielername"
+                                    value={search}
+                                    onChange={handleSearchChange}
+                                    fullWidth
+                                    sx={{ mb: 2 }}
+                                />
+                                <Paper sx={{ mb: 3 }}>
+                                    {players.map(p => (
+                                        <Box
+                                            key={p.id}
+                                            sx={{ p: 1, borderBottom: '1px solid #333', cursor: 'pointer' }}
+                                            onClick={() => loadPlayerData(p)}
+                                        >
+                                            {p.player_name} {alliances[p.alli_id] ? `(${alliances[p.alli_id]})` : ''}
+                                        </Box>
+                                    ))}
+                                </Paper>
 
-                        {selectedPlayer && (
-                            <Box>
-                                <Typography variant="h5" sx={{ mb: 2 }}>
-                                    {selectedPlayer.player_name}
-                                    {alliances[selectedPlayer.alli_id] && ` (${alliances[selectedPlayer.alli_id]})`}
-                                </Typography>
-                                {/* Forschungs-Accordion */}
-                                <Accordion defaultExpanded sx={{mb: 2}}>
-                                    <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
-                                        <Typography>Forschungen</Typography>
-                                    </AccordionSummary>
-                                    <AccordionDetails>
-                                        {Object.entries(research).filter(([, v]) => v > 0).length === 0 ? (
-                                            <Typography>Keine Forschung</Typography>
-                                        ) : (
-                                            <TableContainer component={Paper} sx={{maxWidth: 400}}>
-                                                <Table size="small" stickyHeader>
-                                                    <TableHead>
-                                                        <TableRow>
-                                                            <TableCell sx={{py: 0.5, px: 1}}>Name</TableCell>
-                                                            <TableCell align="right" sx={{py: 0.5, px: 1}}>Level</TableCell>
-                                                        </TableRow>
-                                                    </TableHead>
-                                                    <TableBody>
-                                                        {Object.entries(research).filter(([, v]) => v > 0).map(([k, v]) => (
-                                                            <TableRow key={k} hover>
-                                                                <TableCell sx={{py: 0.5, px: 1}}>{locMap[k] || k}</TableCell>
-                                                                <TableCell align="right" sx={{py: 0.5, px: 1}}>{v}</TableCell>
-                                                            </TableRow>
-                                                        ))}
-                                                    </TableBody>
-                                                </Table>
-                                            </TableContainer>
-                                        )}
-                                    </AccordionDetails>
-                                </Accordion>
-
-                                {/* Planeten & Monde */}
-                                {['Planeten', 'Monde'].map((lbl, i) => {
-                                    const list = i === 0 ? celestials.planets : celestials.moons
-                                    return (
-                                        <Accordion key={lbl} defaultExpanded sx={{mb: 2}}>
+                                {selectedPlayer && (
+                                    <Box>
+                                        <Typography variant="h5" sx={{
+                                            mb: 2,
+                                            bgcolor: 'rgba(0,0,0,0.6)',
+                                            px: 1,
+                                            py: 0.5,
+                                            borderRadius: 1,
+                                            display: 'inline-block'
+                                        }}>
+                                            {selectedPlayer.player_name}{alliances[selectedPlayer.alli_id] && ` (${alliances[selectedPlayer.alli_id]})`}
+                                            {latestReport?.timestamp && (
+                                                <Typography
+                                                    component="span"
+                                                    variant="body2"
+                                                    sx={{ ml: 1, color: 'text.secondary' }}
+                                                >
+                                                    {latestReport.timestamp}
+                                                </Typography>
+                                            )}
+                                        </Typography>
+                                        {/* Forschungs-Accordion */}
+                                        <Accordion defaultExpanded sx={{mb: 2}}>
                                             <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
-                                                <Typography>{lbl}</Typography>
+                                                <Typography>Forschungen</Typography>
                                             </AccordionSummary>
                                             <AccordionDetails>
-                                                {list.filter(c => {
-                                                    const rpt = spyReports[c.id];
-                                                    if (!rpt) return false;
-                                                    // Check any category has data > 0
-                                                    const cats = ['cat900','cat0','cat400','cat200'];
-                                                    return cats.some(cat => Object.values(rpt[cat]||{}).some(v => v > 0));
-                                                }).map(c => {
-                                                    const rpt = spyReports[c.id]
-                                                    return (
-                                                        <Accordion key={c.id} sx={{mb: 1}}>
-                                                            <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
-                                                                <Typography>{c.name} ({c.coord.join(':')})</Typography>
-                                                            </AccordionSummary>
-                                                            <AccordionDetails>
-                                                                {rpt ? (
-                                                                    <Grid container spacing={1}>
-                                                                        {['cat900', 'cat0', 'cat400', 'cat200'].map(cat => {
-                                                                            const title = cat === 'cat0' ? 'Gebäude' : cat === 'cat200' ? 'Flotte' : cat === 'cat400' ? 'Verteidigung' : 'Ressourcen'
-                                                                            const data = Object.entries(rpt[cat] || {}).filter(([, v]) => v > 0)
-                                                                            return (
-                                                                                <Grid item xs={12} sm={4} key={cat}>
-                                                                                    <TableContainer component={Paper} variant="outlined">
-                                                                                        <Table size="small" stickyHeader>
-                                                                                            <TableHead>
-                                                                                                <TableRow>
-                                                                                                    <TableCell sx={{py: 0.5, px: 1}}>{title}</TableCell>
-                                                                                                    <TableCell align="right" sx={{py: 0.5, px: 1}}></TableCell>
-                                                                                                </TableRow>
-                                                                                            </TableHead>
-                                                                                            <TableBody>
-                                                                                                {data.map(([k, v]) => (
-                                                                                                    <TableRow key={k} hover>
-                                                                                                        <TableCell sx={{py: 0.5, px: 1}}>{locMap[k] || k}</TableCell>
-                                                                                                        <TableCell align="right" sx={{py: 0.5, px: 1}}>{v}</TableCell>
-                                                                                                    </TableRow>
-                                                                                                ))}
-                                                                                            </TableBody>
-                                                                                        </Table>
-                                                                                    </TableContainer>
-                                                                                </Grid>
-                                                                            )
-                                                                        })}
-                                                                    </Grid>
-                                                                ) : (
-                                                                    <Typography>Keine Daten</Typography>
-                                                                )}
-                                                            </AccordionDetails>
-                                                        </Accordion>
-                                                    )
-                                                })}
+                                                {Object.entries(research).filter(([, v]) => v > 0).length === 0 ? (
+                                                    <Typography>Keine Forschung</Typography>
+                                                ) : (
+                                                    <TableContainer component={Paper} sx={{maxWidth: 400}}>
+                                                        <Table size="small" stickyHeader>
+                                                            <TableHead>
+                                                                <TableRow>
+                                                                    <TableCell sx={{py: 0.5, px: 1}}>Name</TableCell>
+                                                                    <TableCell align="right" sx={{py: 0.5, px: 1}}>Level</TableCell>
+                                                                </TableRow>
+                                                            </TableHead>
+                                                            <TableBody>
+                                                                {Object.entries(research).filter(([, v]) => v > 0).map(([k, v]) => (
+                                                                    <TableRow key={k} hover>
+                                                                        <TableCell sx={{py: 0.5, px: 1}}>{locMap[k] || k}</TableCell>
+                                                                        <TableCell align="right" sx={{py: 0.5, px: 1}}>{v}</TableCell>
+                                                                    </TableRow>
+                                                                ))}
+                                                            </TableBody>
+                                                        </Table>
+                                                    </TableContainer>
+                                                )}
                                             </AccordionDetails>
                                         </Accordion>
-                                    )
-                                })}
-                            </Box>
-                        )}
+
+                                        {/* Planeten & Monde */}
+                                        {['Planeten', 'Monde'].map((lbl, i) => {
+                                            const list = i === 0 ? celestials.planets : celestials.moons
+                                            return (
+                                                <Accordion key={lbl} defaultExpanded sx={{mb: 2}}>
+                                                    <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
+                                                        <Typography>{lbl}</Typography>
+                                                    </AccordionSummary>
+                                                    <AccordionDetails>
+                                                        {list.filter(c => {
+                                                            const rpt = spyReports[c.id];
+                                                            if (!rpt) return false;
+                                                            // Check any category has data > 0
+                                                            const cats = ['cat900','cat0','cat400','cat200'];
+                                                            return cats.some(cat => Object.values(rpt[cat]||{}).some(v => v > 0));
+                                                        }).map(c => {
+                                                            const rpt = spyReports[c.id]
+                                                            return (
+                                                                <Accordion key={c.id} sx={{mb: 1}}>
+                                                                    <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
+                                                                        <Typography>{c.name} ({c.coord.join(':')})</Typography>
+                                                                    </AccordionSummary>
+                                                                    <AccordionDetails>
+                                                                        {rpt ? (
+                                                                            <Grid container spacing={1}>
+                                                                                {['cat900', 'cat0', 'cat400', 'cat200'].map(cat => {
+                                                                                    const title = cat === 'cat0' ? 'Gebäude' : cat === 'cat200' ? 'Flotte' : cat === 'cat400' ? 'Verteidigung' : 'Ressourcen'
+                                                                                    const data = Object.entries(rpt[cat] || {}).filter(([, v]) => v > 0)
+                                                                                    return (
+                                                                                        <Grid item xs={12} sm={4} key={cat}>
+                                                                                            <TableContainer component={Paper} variant="outlined">
+                                                                                                <Table size="small" stickyHeader>
+                                                                                                    <TableHead>
+                                                                                                        <TableRow>
+                                                                                                            <TableCell sx={{py: 0.5, px: 1}}>{title}</TableCell>
+                                                                                                            <TableCell align="right" sx={{py: 0.5, px: 1}}></TableCell>
+                                                                                                        </TableRow>
+                                                                                                    </TableHead>
+                                                                                                    <TableBody>
+                                                                                                        {data.map(([k, v]) => (
+                                                                                                            <TableRow key={k} hover>
+                                                                                                                <TableCell sx={{py: 0.5, px: 1}}>{locMap[k] || k}</TableCell>
+                                                                                                                <TableCell align="right" sx={{py: 0.5, px: 1}}>{v}</TableCell>
+                                                                                                            </TableRow>
+                                                                                                        ))}
+                                                                                                    </TableBody>
+                                                                                                </Table>
+                                                                                            </TableContainer>
+                                                                                        </Grid>
+                                                                                    )
+                                                                                })}
+                                                                            </Grid>
+                                                                        ) : (
+                                                                            <Typography>Keine Daten</Typography>
+                                                                        )}
+                                                                    </AccordionDetails>
+                                                                </Accordion>
+                                                            )
+                                                        })}
+                                                    </AccordionDetails>
+                                                </Accordion>
+                                            )
+                                        })}
+                                    </Box>
+                                )}
                             </>
                         )}
                         {/* Phalanx */}
