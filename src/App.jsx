@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react'
-import { pb } from './api/pocketbase'
+import React, {useState, useCallback, useEffect} from 'react'
+import {pb} from './api/pocketbase'
 import debounce from 'lodash.debounce'
 import {
     AppBar,
@@ -95,6 +95,18 @@ const locMap = {
     "133": "Produktionsmaximierung Deuterium"
 }
 
+function getStatusColor(ranking) {
+    if (!ranking) return 'white';
+    if (ranking.banned) return '#6B002A';          // banned
+    if (ranking.umode) return '#497290';         // U-Mode
+    if (ranking.inactive || ranking.inactive_long) return '#999999';         // inactive
+    return 'white';
+}
+
+function formatNumber(number) {
+    return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+}
+
 export default function App() {
     const [user, setUser] = useState(pb.authStore.isValid ? pb.authStore.model : null)
     const [username, setUsername] = useState('')
@@ -108,6 +120,8 @@ export default function App() {
     const [spyReports, setSpyReports] = useState({})
     const [alliances, setAlliances] = useState({})
     const [latestReport, setLatestReport] = useState(null)
+    const [ranking, setRanking] = useState(null)
+    const [playerStatuses, setPlayerStatuses] = useState({});
     // Phalanx states
     const [phalanxSearch, setPhalanxSearch] = useState('')
     const [phalanxResults, setPhalanxResults] = useState([])
@@ -118,7 +132,7 @@ export default function App() {
     useEffect(() => {
         const fetchAlliances = async () => {
             try {
-                const allis = await pb.collection('alliances').getFullList({ sort: 'alli_name' })
+                const allis = await pb.collection('alliances').getFullList({sort: 'alli_name'})
                 const map = Object.fromEntries(allis.map(a => [a.alli_id, a.alli_name]))
                 setAlliances(map)
             } catch (err) {
@@ -130,16 +144,33 @@ export default function App() {
 
 
     // Debounced player search
-    const debouncedSearch = useCallback(
-        debounce(async val => {
-            if (!val) return setPlayers([])
-            const res = await pb.collection('players').getFullList({
-                filter: pb.filter('player_name ~ {:s}', {s: val}),
-                sort: 'player_name'
+    const debouncedSearch = useCallback(debounce(async val => {
+        if (!val) {
+            setPlayers([])
+            setPlayerStatuses({})
+            return
+        }
+        if (!val) return setPlayers([])
+        const res = await pb.collection('players').getFullList({
+            filter: pb.filter('player_name ~ {:s}', {s: val}), sort: 'player_name'
+        })
+        const ids = res.map(p => p.player_id)          // [1, 42, 133, …]
+        if (ids.length) {
+            const filterStr = ids.map(id => `player_id = ${id}`).join(' || ')
+            const ranks = await pb.collection('uni_rankings').getFullList({
+                filter: filterStr, sort: '-date',
             })
-            setPlayers(res)
-        }, 300), []
-    )
+            const latest = {}
+            ranks.forEach(r => {
+                if (!latest[r.player_id]) latest[r.player_id] = r
+            })
+            setPlayerStatuses(latest)
+        } else {
+            setPlayerStatuses({})
+        }
+
+        setPlayers(res)
+    }, 300), [])
 
     const handleSearchChange = e => {
         setSearch(e.target.value)
@@ -147,81 +178,69 @@ export default function App() {
     }
 
     // Debounced Phalanx-Search
-    const debouncedPhalanx = useCallback(
-        debounce(async (val) => {
-            try {
-                const raw = val.trim()
-                if (!raw) return setPhalanxResults([])
-                // system from 1 to 400
-                const systemFilter = parseInt(raw, 10)
-                if (!systemFilter || systemFilter < 1 || systemFilter > 400) return setPhalanxResults([])
+    const debouncedPhalanx = useCallback(debounce(async (val) => {
+        try {
+            const raw = val.trim()
+            if (!raw) return setPhalanxResults([])
+            // system from 1 to 400
+            const systemFilter = parseInt(raw, 10)
+            if (!systemFilter || systemFilter < 1 || systemFilter > 400) return setPhalanxResults([])
 
-                // load all moons
-                const states = await pb.collection('galaxy_state').getFullList({ filter: pb.filter('has_moon = true') })
-                // collect report IDs
-                const allRptIds = states.flatMap(rec => {
-                    const blds = rec.moon_buildings
-                    if (!blds) return []
-                    return (Array.isArray(blds) ? blds : [blds]).filter(id => !!id)
-                })
-                const uniqueRptIds = Array.from(new Set(allRptIds))
-                if (!uniqueRptIds.length) return setPhalanxResults([])
-                // fetch all spy reports once
-                const allReports = await pb.collection('spy_reports').getFullList({ sort: '-timestamp' })
-                const reportsMap = Object.fromEntries(
-                    allReports.filter(r => uniqueRptIds.includes(r.id)).map(r => [r.id, r])
-                )
+            // load all moons
+            const states = await pb.collection('galaxy_state').getFullList({filter: pb.filter('has_moon = true')})
+            // collect report IDs
+            const allRptIds = states.flatMap(rec => {
+                const blds = rec.moon_buildings
+                if (!blds) return []
+                return (Array.isArray(blds) ? blds : [blds]).filter(id => !!id)
+            })
+            const uniqueRptIds = Array.from(new Set(allRptIds))
+            if (!uniqueRptIds.length) return setPhalanxResults([])
+            // fetch all spy reports once
+            const allReports = await pb.collection('spy_reports').getFullList({sort: '-timestamp'})
+            const reportsMap = Object.fromEntries(allReports.filter(r => uniqueRptIds.includes(r.id)).map(r => [r.id, r]))
 
-                // compute matches
-                const matches = []
-                for (const rec of states) {
-                    const ids = rec.moon_buildings ?
-                        (Array.isArray(rec.moon_buildings) ? rec.moon_buildings : [rec.moon_buildings]) : []
-                    const latest = ids
-                        .map(id => reportsMap[id])
-                        .filter(r => r)
-                        .sort((a, b) => b.timestamp - a.timestamp)[0]
-                    if (!latest) continue
-                    const lvl = latest.cat0?.['42'] || 0
-                    if (lvl <= 0) continue
-                    const range = Math.pow(lvl, 2) - 1
-                    const rawDiff = Math.abs(rec.pos_system - systemFilter)
-                    const diff = Math.min(rawDiff, 400 - rawDiff)
-                    if (diff > range) continue
-                    matches.push(rec)
-                }
-                if (!matches.length) return setPhalanxResults([])
-
-                // dedupe per player
-                const uniqueMatches = Array.from(new Map(matches.map(m => [m.player_id, m])).values())
-                const playerIds = uniqueMatches.map(m => m.player_id)
-                // fetch all players once
-                const allPlayers = await pb.collection('players').getFullList()
-                const playersMap = Object.fromEntries(
-                    allPlayers.filter(p => playerIds.includes(p.player_id)).map(p => [p.player_id, p])
-                )
-
-                // assemble results with alliance
-                const results = uniqueMatches.map(rec => {
-                    const player = playersMap[rec.player_id]
-                    const alliName = player?.alli_id ? alliances[player.alli_id] : null
-                    return {
-                        playerId: rec.player_id,
-                        name: player?.player_name || 'unbekannt',
-                        alliance: alliName,
-                        allianceId: player?.alli_id || null,
-                        coord: [rec.pos_galaxy, rec.pos_system, rec.pos_planet]
-                    }
-                })
-
-                setPhalanxResults(results)
-            } catch (err) {
-                if (err.message && err.message.includes('autocancelled')) return
-                console.error(err)
+            // compute matches
+            const matches = []
+            for (const rec of states) {
+                const ids = rec.moon_buildings ? (Array.isArray(rec.moon_buildings) ? rec.moon_buildings : [rec.moon_buildings]) : []
+                const latest = ids
+                    .map(id => reportsMap[id])
+                    .filter(r => r)
+                    .sort((a, b) => b.timestamp - a.timestamp)[0]
+                if (!latest) continue
+                const lvl = latest.cat0?.['42'] || 0
+                if (lvl <= 0) continue
+                const range = Math.pow(lvl, 2) - 1
+                const rawDiff = Math.abs(rec.pos_system - systemFilter)
+                const diff = Math.min(rawDiff, 400 - rawDiff)
+                if (diff > range) continue
+                matches.push(rec)
             }
-        }, 500),
-        [alliances]
-    )
+            if (!matches.length) return setPhalanxResults([])
+
+            // dedupe per player
+            const uniqueMatches = Array.from(new Map(matches.map(m => [m.player_id, m])).values())
+            const playerIds = uniqueMatches.map(m => m.player_id)
+            // fetch all players once
+            const allPlayers = await pb.collection('players').getFullList()
+            const playersMap = Object.fromEntries(allPlayers.filter(p => playerIds.includes(p.player_id)).map(p => [p.player_id, p]))
+
+            // assemble results with alliance
+            const results = uniqueMatches.map(rec => {
+                const player = playersMap[rec.player_id]
+                const alliName = player?.alli_id ? alliances[player.alli_id] : null
+                return {
+                    playerId: rec.player_id, name: player?.player_name || 'unbekannt', alliance: alliName, allianceId: player?.alli_id || null, coord: [rec.pos_galaxy, rec.pos_system, rec.pos_planet]
+                }
+            })
+
+            setPhalanxResults(results)
+        } catch (err) {
+            if (err.message && err.message.includes('autocancelled')) return
+            console.error(err)
+        }
+    }, 500), [alliances])
 
     const handlePhalanxChange = e => {
         setPhalanxSearch(e.target.value)
@@ -236,37 +255,44 @@ export default function App() {
         const reportsAll = await pb.collection('spy_reports').getFullList({
             filter: pb.filter('player = {:pid}', {pid: player.id}), sort: '-created'
         })
-        const withResearch = reportsAll.filter(r =>
-            r.cat100 && Object.values(r.cat100).some(v => v > 0)
-        )
+        const withResearch = reportsAll.filter(r => r.cat100 && Object.values(r.cat100).some(v => v > 0))
         const latest = withResearch[0] || null
+        try {
+            // load ranking from uni_rankings
+            try {
+                const rankList = await pb.collection('uni_rankings').getFullList({
+                    filter: pb.filter('player_id = {:pid}', {pid: player.player_id}), sort: '-date'
+                });
+                const validRanks = rankList.filter(r => [r.points_points, r.rank_points, r.points_buildings, r.rank_buildings, r.points_defense, r.rank_defense, r.points_fleet, r.rank_fleet, r.points_research, r.rank_research].every(v => v !== -1));
+
+                setRanking(validRanks[0] || null);
+            } catch {
+                setRanking(null);
+            }
+        } catch {
+            console.log('Error in loadPlayerData')
+            setRanking(null)
+        }
         setLatestReport(latest);
         setResearch(latest ? latest.cat100 : {});
 
         // Galaxy state
         const states = await pb.collection('galaxy_state').getFullList({
-            filter: pb.filter('player_id = {:pid}', {pid: player.player_id}),
-            sort: 'pos_galaxy,pos_system,pos_planet'
+            filter: pb.filter('player_id = {:pid}', {pid: player.player_id}), sort: 'pos_galaxy,pos_system,pos_planet'
         })
         const recMap = Object.fromEntries(states.map(r => [r.id, r]))
         // Build planets and moons with unique IDs
         const planets = states
             .filter(r => r.planet_id > 0)
             .map(r => ({
-                id: `p_${r.id}`,
-                recId: r.id,
-                name: r.planet_name,
-                coord: [r.pos_galaxy, r.pos_system, r.pos_planet]
+                id: `p_${r.id}`, recId: r.id, name: r.planet_name, coord: [r.pos_galaxy, r.pos_system, r.pos_planet]
             }))
         const moons = states
             .filter(r => r.has_moon)
             .map(r => ({
-                id: `m_${r.id}`,
-                recId: r.id,
-                name: r.moon_name,
-                coord: [r.pos_galaxy, r.pos_system, r.pos_planet]
+                id: `m_${r.id}`, recId: r.id, name: r.moon_name, coord: [r.pos_galaxy, r.pos_system, r.pos_planet]
             }))
-        setCelestials({ planets, moons })
+        setCelestials({planets, moons})
 
         // Spy reports per celestial (distinct keys)
         const sr = {}
@@ -288,8 +314,7 @@ export default function App() {
     }
 
     // Render login or main UI
-    return (
-        <>
+    return (<>
             {/* Fixed Background Layer */}
             <Box
                 component="div"
@@ -306,12 +331,11 @@ export default function App() {
                     backgroundRepeat: 'no-repeat',
                 }}
             />
-            {!user ? (
-                <Container maxWidth="sm" sx={{mt: 4}}>
+            {!user ? (<Container maxWidth="sm" sx={{mt: 4}}>
                     <Typography variant="h4" gutterBottom>Login</Typography>
                     <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
-                        <TextField label="Benutzername" value={username} onChange={e => setUsername(e.target.value)} fullWidth />
-                        <TextField label="Passwort" type="password" value={password} onChange={e => setPassword(e.target.value)} fullWidth />
+                        <TextField label="Benutzername" value={username} onChange={e => setUsername(e.target.value)} fullWidth/>
+                        <TextField label="Passwort" type="password" value={password} onChange={e => setPassword(e.target.value)} fullWidth/>
                         <Button variant="contained" onClick={async () => {
                             try {
                                 const auth = await pb.collection('users').authWithPassword(username, password)
@@ -321,9 +345,7 @@ export default function App() {
                             }
                         }}>Login</Button>
                     </Box>
-                </Container>
-            ) : (
-                <Box sx={{ position: 'relative', zIndex: 0 }}>
+                </Container>) : (<Box sx={{position: 'relative', zIndex: 0}}>
                     <AppBar position="static">
                         <Toolbar>
                             <Tabs
@@ -332,64 +354,64 @@ export default function App() {
                                 textColor="inherit"
                                 indicatorColor="secondary"
                             >
-                                <Tab label="Spielersuche" />
-                                <Tab label="Phalanx" />
+                                <Tab label="Spielersuche"/>
+                                <Tab label="Phalanx"/>
                             </Tabs>
                         </Toolbar>
                     </AppBar>
-                    <Container sx={{ mt: 4 }}>
+                    <Container sx={{mt: 4}}>
                         {/* Spielersuche */}
-                        {tabValue === 0 && (
-                            <>
+                        {tabValue === 0 && (<>
                                 <TextField
                                     label="Spielername"
                                     value={search}
                                     onChange={handleSearchChange}
                                     fullWidth
-                                    sx={{ mb: 2 }}
+                                    sx={{mb: 2}}
                                 />
-                                <Paper sx={{ mb: 3 }}>
-                                    {players.map(p => (
-                                        <Box
-                                            key={p.id}
-                                            sx={{ p: 1, borderBottom: '1px solid #333', cursor: 'pointer' }}
-                                            onClick={() => loadPlayerData(p)}
-                                        >
-                                            {p.player_name} {alliances[p.alli_id] ? `(${alliances[p.alli_id]})` : ''}
-                                        </Box>
-                                    ))}
+                                <Paper sx={{mb: 3}}>
+                                    {players.map(p => {
+                                        return (<Box
+                                                key={p.id}
+                                                onClick={() => loadPlayerData(p)}
+                                                sx={{
+                                                    p: 1, borderBottom: '1px solid #333', cursor: 'pointer', color: getStatusColor(playerStatuses[p.player_id]),
+                                                }}
+                                            >
+                                                {p.player_name} {alliances[p.alli_id] ? `(${alliances[p.alli_id]})` : ''}
+                                            </Box>)
+                                    })}
                                 </Paper>
 
-                                {selectedPlayer && (
-                                    <Box>
-                                        <Typography variant="h5" sx={{
-                                            mb: 2,
-                                            bgcolor: 'rgba(0,0,0,0.6)',
-                                            px: 1,
-                                            py: 0.5,
-                                            borderRadius: 1,
-                                            display: 'inline-block'
-                                        }}>
-                                            {selectedPlayer.player_name}{alliances[selectedPlayer.alli_id] && ` (${alliances[selectedPlayer.alli_id]})`}
-                                            {latestReport?.timestamp && (
-                                                <Typography
-                                                    component="span"
-                                                    variant="body2"
-                                                    sx={{ ml: 1, color: 'text.secondary' }}
-                                                >
+                                {selectedPlayer && (<Box>
+                                        <Typography
+                                            variant="h5"
+                                            sx={{
+                                                mb: 2, px: 1, py: 0.5, bgcolor: 'rgba(0,0,0,0.6)', borderRadius: 1, display: 'inline-block', color: getStatusColor(ranking),
+                                            }}
+                                        >
+                                            {selectedPlayer.player_name}
+                                            {alliances[selectedPlayer.alli_id] && ` (${alliances[selectedPlayer.alli_id]})`}
+                                            {latestReport?.timestamp && (<Typography component="span" variant="body2" sx={{ml: 1, color: 'text.secondary'}}>
                                                     {latestReport.timestamp}
-                                                </Typography>
-                                            )}
+                                                </Typography>)}
                                         </Typography>
+                                        {ranking && (<Box sx={{mb: 2, bgcolor: 'rgba(0,0,0,0.6)', px: 1, py: 0.5, borderRadius: 1}}>
+                                                <Typography variant="body2">
+                                                    Gesamt: {formatNumber(ranking.points_points)} Pkt. (Rang {ranking.rank_points}) |
+                                                    Flotte: {formatNumber(ranking.points_fleet)} Pkt. (Rang {ranking.rank_fleet}) |
+                                                    Verteidigung: {formatNumber(ranking.points_defense)} Pkt. (Rang {ranking.rank_defense}) |
+                                                    Forschung: {formatNumber(ranking.points_research)} Pkt. (Rang {ranking.rank_research}) |
+                                                    Gebäude: {formatNumber(ranking.points_buildings)} Pkt. (Rang {ranking.rank_buildings})
+                                                </Typography>
+                                            </Box>)}
                                         {/* Forschungs-Accordion */}
                                         <Accordion defaultExpanded sx={{mb: 2}}>
                                             <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
                                                 <Typography>Forschungen</Typography>
                                             </AccordionSummary>
                                             <AccordionDetails>
-                                                {Object.entries(research).filter(([, v]) => v > 0).length === 0 ? (
-                                                    <Typography>Keine Forschung</Typography>
-                                                ) : (
+                                                {Object.entries(research).filter(([, v]) => v > 0).length === 0 ? (<Typography>Keine Forschung</Typography>) : (
                                                     <TableContainer component={Paper} sx={{maxWidth: 400}}>
                                                         <Table size="small" stickyHeader>
                                                             <TableHead>
@@ -399,24 +421,20 @@ export default function App() {
                                                                 </TableRow>
                                                             </TableHead>
                                                             <TableBody>
-                                                                {Object.entries(research).filter(([, v]) => v > 0).map(([k, v]) => (
-                                                                    <TableRow key={k} hover>
+                                                                {Object.entries(research).filter(([, v]) => v > 0).map(([k, v]) => (<TableRow key={k} hover>
                                                                         <TableCell sx={{py: 0.5, px: 1}}>{locMap[k] || k}</TableCell>
                                                                         <TableCell align="right" sx={{py: 0.5, px: 1}}>{v}</TableCell>
-                                                                    </TableRow>
-                                                                ))}
+                                                                    </TableRow>))}
                                                             </TableBody>
                                                         </Table>
-                                                    </TableContainer>
-                                                )}
+                                                    </TableContainer>)}
                                             </AccordionDetails>
                                         </Accordion>
 
                                         {/* Planeten & Monde */}
                                         {['Planeten', 'Monde'].map((lbl, i) => {
                                             const list = i === 0 ? celestials.planets : celestials.moons
-                                            return (
-                                                <Accordion key={lbl} defaultExpanded sx={{mb: 2}}>
+                                            return (<Accordion key={lbl} defaultExpanded sx={{mb: 2}}>
                                                     <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
                                                         <Typography>{lbl}</Typography>
                                                     </AccordionSummary>
@@ -425,23 +443,20 @@ export default function App() {
                                                             const rpt = spyReports[c.id];
                                                             if (!rpt) return false;
                                                             // Check any category has data > 0
-                                                            const cats = ['cat900','cat0','cat400','cat200'];
-                                                            return cats.some(cat => Object.values(rpt[cat]||{}).some(v => v > 0));
+                                                            const cats = ['cat900', 'cat0', 'cat400', 'cat200'];
+                                                            return cats.some(cat => Object.values(rpt[cat] || {}).some(v => v > 0));
                                                         }).map(c => {
                                                             const rpt = spyReports[c.id]
-                                                            return (
-                                                                <Accordion key={c.id} sx={{mb: 1}}>
+                                                            return (<Accordion key={c.id} sx={{mb: 1}}>
                                                                     <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
                                                                         <Typography>{c.name} ({c.coord.join(':')})</Typography>
                                                                     </AccordionSummary>
                                                                     <AccordionDetails>
-                                                                        {rpt ? (
-                                                                            <Grid container spacing={1}>
+                                                                        {rpt ? (<Grid container spacing={1}>
                                                                                 {['cat900', 'cat0', 'cat400', 'cat200'].map(cat => {
                                                                                     const title = cat === 'cat0' ? 'Gebäude' : cat === 'cat200' ? 'Flotte' : cat === 'cat400' ? 'Verteidigung' : 'Ressourcen'
                                                                                     const data = Object.entries(rpt[cat] || {}).filter(([, v]) => v > 0)
-                                                                                    return (
-                                                                                        <Grid item xs={12} sm={4} key={cat}>
+                                                                                    return (<Grid item xs={12} sm={4} key={cat}>
                                                                                             <TableContainer component={Paper} variant="outlined">
                                                                                                 <Table size="small" stickyHeader>
                                                                                                     <TableHead>
@@ -451,60 +466,44 @@ export default function App() {
                                                                                                         </TableRow>
                                                                                                     </TableHead>
                                                                                                     <TableBody>
-                                                                                                        {data.map(([k, v]) => (
-                                                                                                            <TableRow key={k} hover>
+                                                                                                        {data.map(([k, v]) => (<TableRow key={k} hover>
                                                                                                                 <TableCell sx={{py: 0.5, px: 1}}>{locMap[k] || k}</TableCell>
-                                                                                                                <TableCell align="right" sx={{py: 0.5, px: 1}}>{v}</TableCell>
-                                                                                                            </TableRow>
-                                                                                                        ))}
+                                                                                                                <TableCell align="right" sx={{py: 0.5, px: 1}}>{formatNumber(v)}</TableCell>
+                                                                                                            </TableRow>))}
                                                                                                     </TableBody>
                                                                                                 </Table>
                                                                                             </TableContainer>
-                                                                                        </Grid>
-                                                                                    )
+                                                                                        </Grid>)
                                                                                 })}
-                                                                            </Grid>
-                                                                        ) : (
-                                                                            <Typography>Keine Daten</Typography>
-                                                                        )}
+                                                                            </Grid>) : (<Typography>Keine Daten</Typography>)}
                                                                     </AccordionDetails>
-                                                                </Accordion>
-                                                            )
+                                                                </Accordion>)
                                                         })}
                                                     </AccordionDetails>
-                                                </Accordion>
-                                            )
+                                                </Accordion>)
                                         })}
-                                    </Box>
-                                )}
-                            </>
-                        )}
+                                    </Box>)}
+                            </>)}
                         {/* Phalanx */}
-                        {tabValue === 1 && (
-                            <>
+                        {tabValue === 1 && (<>
                                 <TextField
                                     label="System"
                                     value={phalanxSearch}
                                     onChange={handlePhalanxChange}
                                     fullWidth
-                                    sx={{ mb: 2 }}
+                                    sx={{mb: 2}}
                                 />
                                 <Paper>
-                                    {phalanxResults.length === 0 ? (
-                                        <Typography sx={{ p: 2 }}>Keine Phalanx</Typography>
-                                    ) : (
-                                        phalanxResults.map((r, idx) => (
-                                            <Box key={`${r.playerId}_${idx}`} sx={{ p: 1, borderBottom: idx < phalanxResults.length - 1 ? '1px solid #333' : 'none', color: r.allianceId === 643 ? 'lightgreen' : 'white' }}>
+                                    {phalanxResults.length === 0 ? (<Typography sx={{p: 2}}>Keine Phalanx</Typography>) : (phalanxResults.map((r, idx) => (<Box key={`${r.playerId}_${idx}`} sx={{
+                                                p: 1,
+                                                borderBottom: idx < phalanxResults.length - 1 ? '1px solid #333' : 'none',
+                                                color: r.allianceId === 643 ? 'lightgreen' : 'white'
+                                            }}>
                                                 {r.name} ({r.coord.join(':')}) {r.alliance ? ` - ${r.alliance}` : ''}
-                                            </Box>
-                                        ))
-                                    )}
+                                            </Box>)))}
                                 </Paper>
-                            </>
-                        )}
+                            </>)}
                     </Container>
-                </Box>
-            )}
-        </>
-    )
+                </Box>)}
+        </>)
 }
