@@ -283,8 +283,15 @@ export default function App() {
         const reportsAll = await pb.collection('spy_reports').getFullList({
             filter: pb.filter('player = {:pid}', {pid: player.id}), sort: '-created'
         })
-        const withResearch = reportsAll.filter(r => r.cat100 && Object.values(r.cat100).some(v => v > 0))
-        const latest = withResearch[0] || null
+        const withResearch = reportsAll
+            .filter(r => r.cat100 && Object.values(r.cat100).some(v => v > 0))
+
+        const latest = withResearch
+            .sort((a, b) => {
+                const countA = Object.values(a.cat100).filter(v => v > 0).length
+                const countB = Object.values(b.cat100).filter(v => v > 0).length
+                return countB - countA
+            })[0] || null
         try {
             // load ranking from uni_rankings
             try {
