@@ -177,6 +177,34 @@ export default function App() {
         debouncedSearch(e.target.value)
     }
 
+    useEffect(() => {
+        const ids = phalanxResults
+            .map(r => r.playerId)
+            .filter(id => id != null)
+
+        if (!ids.length) return
+
+            ;(async () => {
+            try {
+                const filterStr = ids.map(id => `player_id = ${id}`).join(' || ')
+                const ranks = await pb.collection('uni_rankings').getFullList({
+                    filter: filterStr,
+                    sort: '-date',
+                })
+                const latest = {}
+                ranks.forEach(r => {
+                    if (!latest[r.player_id]) latest[r.player_id] = r
+                })
+                setPlayerStatuses(prev => ({ ...prev, ...latest }))
+                // zwingt React, diesen Effect zu „lesen“
+                setDummy({})
+            } catch (error) {
+                console.error('Fehler beim Laden der Phalanx-Statuses:', error)
+            }
+        })()
+    }, [phalanxResults])
+
+
     // Debounced Phalanx-Search
     const debouncedPhalanx = useCallback(debounce(async (val) => {
         try {
@@ -493,15 +521,25 @@ export default function App() {
                                     fullWidth
                                     sx={{mb: 2}}
                                 />
-                                <Paper>
-                                    {phalanxResults.length === 0 ? (<Typography sx={{p: 2}}>Keine Phalanx</Typography>) : (phalanxResults.map((r, idx) => (<Box key={`${r.playerId}_${idx}`} sx={{
+                            <Paper>
+                                {phalanxResults.length === 0 ? (
+                                    <Typography sx={{ p: 2 }}>Keine Phalanx</Typography>
+                                ) : (
+                                    phalanxResults.map((r, idx) => (
+                                        <Box
+                                            key={`${r.playerId}_${idx}`}
+                                            sx={{
                                                 p: 1,
                                                 borderBottom: idx < phalanxResults.length - 1 ? '1px solid #333' : 'none',
-                                                color: r.allianceId === 643 ? 'lightgreen' : 'white'
-                                            }}>
-                                                {r.name} ({r.coord.join(':')}) {r.alliance ? ` - ${r.alliance}` : ''}
-                                            </Box>)))}
-                                </Paper>
+                                                color: getStatusColor(playerStatuses[r.playerId]) === 'white' ? (r.allianceId === 643 ? 'lightgreen' : 'white') : getStatusColor(playerStatuses[r.playerId])
+                                            }}
+                                        >
+                                            {r.name} ({r.coord.join(':')})
+                                            {r.alliance ? ` – ${r.alliance}` : ''}
+                                        </Box>
+                                    ))
+                                )}
+                            </Paper>
                             </>)}
                     </Container>
                 </Box>)}
