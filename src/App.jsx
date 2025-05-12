@@ -23,6 +23,7 @@ import {
     Tabs,
     Tab
 } from '@mui/material'
+import { saveAs } from 'file-saver'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 
 // Mapping ID → Name
@@ -349,207 +350,293 @@ export default function App() {
         setSpyReports(sr)
     }
 
+    const handleExport = async () => {
+        const [galaxyRecs, playerRecs, alliRecs, uniRankRecs] = await Promise.all([
+            pb.collection('galaxy_state').getFullList({ sort: 'pos_galaxy,pos_system,pos_planet' }),
+            pb.collection('players').getFullList(),
+            pb.collection('alliances').getFullList(),
+            pb.collection('uni_rankings').getFullList()
+        ])
+
+        const uniMap = {}
+        uniRankRecs.forEach(r => {
+            const pid = r.player_id
+            if (!uniMap[pid] || new Date(r.updated) > new Date(uniMap[pid].updated)) {
+                uniMap[pid] = r
+            }
+        })
+
+        const computeSpecial = (rank = {}) => {
+            let s = ''
+            if (rank.banned) s += 'g'
+            if (rank.umode) s += 'u'
+            if (rank.inactive_long) s += 'I'
+            if (rank.inactive) s += 'i'
+            return s
+        }
+
+        const alliNameMap = Object.fromEntries(alliRecs.map(a => [a.alli_id, a.alli_name]))
+        const playerInfoMap = Object.fromEntries(
+            playerRecs.map(p => [p.player_id, {
+                name: p.player_name,
+                allianceid: p.alli_id,
+                alliancename: alliNameMap[p.alli_id] ?? '-'
+            }])
+        )
+
+        const galaxy = {}
+        for (let sys = 1; sys <= 400; sys++) {
+            const key = `1:${sys}`
+            const slots = {timepoint: Date.now()}
+            for (let pos = 1; pos <= 15; pos++) {
+                const rec = galaxyRecs.find(r =>
+                    r.pos_galaxy === 1 && r.pos_system === sys && r.pos_planet === pos
+                )
+                if (!rec || rec.is_destroyed === true) {
+                    slots[pos] = null
+                } else {
+                    const p = playerInfoMap[rec.player_id] || {name: '', allianceid: -1, alliancename: '-'}
+                    slots[pos] = {
+                        planetname: rec.planet_name,
+                        hasmoon: rec.has_moon,
+                        playerid: rec.player_id,
+                        name: p.name,
+                        allianceid: p.allianceid === -1 ? 0 : p.allianceid,
+                        alliancename: p.alliancename,
+                        special: computeSpecial(uniMap[rec.player_id])
+                    }
+                }
+            }
+            galaxy[key] = slots
+        }
+
+        const players = {}
+        playerRecs.forEach(p => {
+            players[p.player_id] = {
+                name: p.player_name,
+                timepoint: new Date(p.updated).getTime()
+            }
+        })
+
+        const alliances = {}
+        alliRecs.forEach(a => {
+            alliances[a.alli_id] = {
+                name: a.alli_name,
+                timepoint: new Date(a.updated).getTime()
+            }
+        })
+
+        const data = [galaxy, players, alliances]
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'})
+        saveAs(blob, `export_${Date.now()}.json`)
+    }
+
+
     // Render login or main UI
     return (<>
-            {/* Fixed Background Layer */}
-            <Box
-                component="div"
-                sx={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    width: '100vw',
-                    height: '100vh',
-                    zIndex: -1,
-                    backgroundImage: `url(https://pr0game.com/styles/resource/images/login/background.jpg)`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    backgroundRepeat: 'no-repeat',
-                }}
-            />
-            {!user ? (<Container maxWidth="sm" sx={{mt: 4}}>
-                    <Typography variant="h4" gutterBottom>Login</Typography>
-                    <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
-                        <TextField label="Benutzername" value={username} onChange={e => setUsername(e.target.value)} fullWidth/>
-                        <TextField label="Passwort" type="password" value={password} onChange={e => setPassword(e.target.value)} fullWidth/>
-                        <Button variant="contained" onClick={async () => {
-                            try {
-                                const auth = await pb.collection('users').authWithPassword(username, password)
-                                setUser(auth.record)
-                            } catch {
-                                alert('Login fehlgeschlagen')
-                            }
-                        }}>Login</Button>
-                    </Box>
-                </Container>) : (<Box sx={{position: 'relative', zIndex: 0}}>
-                    <AppBar position="static">
-                        <Toolbar>
-                            <Tabs
-                                value={tabValue}
-                                onChange={(e, newVal) => setTabValue(newVal)}
-                                textColor="inherit"
-                                indicatorColor="secondary"
+        {/* Fixed Background Layer */}
+        <Box
+            component="div"
+            sx={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100vw',
+                height: '100vh',
+                zIndex: -1,
+                backgroundImage: `url(https://pr0game.com/styles/resource/images/login/background.jpg)`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+            }}
+        />
+        {!user ? (<Container maxWidth="sm" sx={{mt: 4}}>
+            <Typography variant="h4" gutterBottom>Login</Typography>
+            <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
+                <TextField label="Benutzername" value={username} onChange={e => setUsername(e.target.value)} fullWidth/>
+                <TextField label="Passwort" type="password" value={password} onChange={e => setPassword(e.target.value)} fullWidth/>
+                <Button variant="contained" onClick={async () => {
+                    try {
+                        const auth = await pb.collection('users').authWithPassword(username, password)
+                        setUser(auth.record)
+                    } catch {
+                        alert('Login fehlgeschlagen')
+                    }
+                }}>Login</Button>
+            </Box>
+        </Container>) : (<Box sx={{position: 'relative', zIndex: 0}}>
+            <AppBar position="static">
+                <Toolbar>
+                    <Tabs
+                        value={tabValue}
+                        onChange={(e, newVal) => setTabValue(newVal)}
+                        textColor="inherit"
+                        indicatorColor="secondary"
+                    >
+                        <Tab label="Spielersuche"/>
+                        <Tab label="Phalanx"/>
+                    </Tabs>
+                    <Box sx={{flexGrow: 1}}/>
+                    <Button color="inherit" onClick={handleExport}>
+                        Export JSON
+                    </Button>
+                </Toolbar>
+            </AppBar>
+            <Container sx={{mt: 4}}>
+                {/* Spielersuche */}
+                {tabValue === 0 && (<>
+                    <TextField
+                        label="Spielername"
+                        value={search}
+                        onChange={handleSearchChange}
+                        fullWidth
+                        sx={{mb: 2}}
+                    />
+                    <Paper sx={{mb: 3}}>
+                        {players.map(p => {
+                            return (<Box
+                                key={p.id}
+                                onClick={() => loadPlayerData(p)}
+                                sx={{
+                                    p: 1, borderBottom: '1px solid #333', cursor: 'pointer', color: getStatusColor(playerStatuses[p.player_id]),
+                                }}
                             >
-                                <Tab label="Spielersuche"/>
-                                <Tab label="Phalanx"/>
-                            </Tabs>
-                        </Toolbar>
-                    </AppBar>
-                    <Container sx={{mt: 4}}>
-                        {/* Spielersuche */}
-                        {tabValue === 0 && (<>
-                                <TextField
-                                    label="Spielername"
-                                    value={search}
-                                    onChange={handleSearchChange}
-                                    fullWidth
-                                    sx={{mb: 2}}
-                                />
-                                <Paper sx={{mb: 3}}>
-                                    {players.map(p => {
-                                        return (<Box
-                                                key={p.id}
-                                                onClick={() => loadPlayerData(p)}
-                                                sx={{
-                                                    p: 1, borderBottom: '1px solid #333', cursor: 'pointer', color: getStatusColor(playerStatuses[p.player_id]),
-                                                }}
-                                            >
-                                                {p.player_name} {alliances[p.alli_id] ? `(${alliances[p.alli_id]})` : ''}
-                                            </Box>)
-                                    })}
-                                </Paper>
+                                {p.player_name} {alliances[p.alli_id] ? `(${alliances[p.alli_id]})` : ''}
+                            </Box>)
+                        })}
+                    </Paper>
 
-                                {selectedPlayer && (<Box>
-                                        <Typography
-                                            variant="h5"
-                                            sx={{
-                                                mb: 2, px: 1, py: 0.5, bgcolor: 'rgba(0,0,0,0.6)', borderRadius: 1, display: 'inline-block', color: getStatusColor(ranking),
-                                            }}
-                                        >
-                                            {selectedPlayer.player_name}
-                                            {alliances[selectedPlayer.alli_id] && ` (${alliances[selectedPlayer.alli_id]})`}
-                                            {latestReport?.timestamp && (<Typography component="span" variant="body2" sx={{ml: 1, color: 'text.secondary'}}>
-                                                    {latestReport.timestamp}
-                                                </Typography>)}
-                                        </Typography>
-                                        {ranking && (<Box sx={{mb: 2, bgcolor: 'rgba(0,0,0,0.6)', px: 1, py: 0.5, borderRadius: 1}}>
-                                                <Typography variant="body2">
-                                                    Gesamt: {formatNumber(ranking.points_points)} Pkt. (Rang {ranking.rank_points}) |
-                                                    Flotte: {formatNumber(ranking.points_fleet)} Pkt. (Rang {ranking.rank_fleet}) |
-                                                    Verteidigung: {formatNumber(ranking.points_defense)} Pkt. (Rang {ranking.rank_defense}) |
-                                                    Forschung: {formatNumber(ranking.points_research)} Pkt. (Rang {ranking.rank_research}) |
-                                                    Gebäude: {formatNumber(ranking.points_buildings)} Pkt. (Rang {ranking.rank_buildings})
-                                                </Typography>
-                                            </Box>)}
-                                        {/* Forschungs-Accordion */}
-                                        <Accordion defaultExpanded sx={{mb: 2}}>
+                    {selectedPlayer && (<Box>
+                        <Typography
+                            variant="h5"
+                            sx={{
+                                mb: 2, px: 1, py: 0.5, bgcolor: 'rgba(0,0,0,0.6)', borderRadius: 1, display: 'inline-block', color: getStatusColor(ranking),
+                            }}
+                        >
+                            {selectedPlayer.player_name}
+                            {alliances[selectedPlayer.alli_id] && ` (${alliances[selectedPlayer.alli_id]})`}
+                            {latestReport?.timestamp && (<Typography component="span" variant="body2" sx={{ml: 1, color: 'text.secondary'}}>
+                                {latestReport.timestamp}
+                            </Typography>)}
+                        </Typography>
+                        {ranking && (<Box sx={{mb: 2, bgcolor: 'rgba(0,0,0,0.6)', px: 1, py: 0.5, borderRadius: 1}}>
+                            <Typography variant="body2">
+                                Gesamt: {formatNumber(ranking.points_points)} Pkt. (Rang {ranking.rank_points}) |
+                                Flotte: {formatNumber(ranking.points_fleet)} Pkt. (Rang {ranking.rank_fleet}) |
+                                Verteidigung: {formatNumber(ranking.points_defense)} Pkt. (Rang {ranking.rank_defense}) |
+                                Forschung: {formatNumber(ranking.points_research)} Pkt. (Rang {ranking.rank_research}) |
+                                Gebäude: {formatNumber(ranking.points_buildings)} Pkt. (Rang {ranking.rank_buildings})
+                            </Typography>
+                        </Box>)}
+                        {/* Forschungs-Accordion */}
+                        <Accordion defaultExpanded sx={{mb: 2}}>
+                            <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
+                                <Typography>Forschungen</Typography>
+                            </AccordionSummary>
+                            <AccordionDetails>
+                                {Object.entries(research).filter(([, v]) => v > 0).length === 0 ? (<Typography>Keine Forschung</Typography>) : (
+                                    <TableContainer component={Paper} sx={{maxWidth: 400}}>
+                                        <Table size="small" stickyHeader>
+                                            <TableHead>
+                                                <TableRow>
+                                                    <TableCell sx={{py: 0.5, px: 1}}>Name</TableCell>
+                                                    <TableCell align="right" sx={{py: 0.5, px: 1}}>Level</TableCell>
+                                                </TableRow>
+                                            </TableHead>
+                                            <TableBody>
+                                                {Object.entries(research).filter(([, v]) => v > 0).map(([k, v]) => (<TableRow key={k} hover>
+                                                    <TableCell sx={{py: 0.5, px: 1}}>{locMap[k] || k}</TableCell>
+                                                    <TableCell align="right" sx={{py: 0.5, px: 1}}>{v}</TableCell>
+                                                </TableRow>))}
+                                            </TableBody>
+                                        </Table>
+                                    </TableContainer>)}
+                            </AccordionDetails>
+                        </Accordion>
+
+                        {/* Planeten & Monde */}
+                        {['Planeten', 'Monde'].map((lbl, i) => {
+                            const list = i === 0 ? celestials.planets : celestials.moons
+                            return (<Accordion key={lbl} defaultExpanded sx={{mb: 2}}>
+                                <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
+                                    <Typography>{lbl}</Typography>
+                                </AccordionSummary>
+                                <AccordionDetails>
+                                    {list.filter(c => {
+                                        const rpt = spyReports[c.id];
+                                        if (!rpt) return false;
+                                        // Check any category has data > 0
+                                        const cats = ['cat900', 'cat0', 'cat400', 'cat200'];
+                                        return cats.some(cat => Object.values(rpt[cat] || {}).some(v => v > 0));
+                                    }).map(c => {
+                                        const rpt = spyReports[c.id]
+                                        return (<Accordion key={c.id} sx={{mb: 1}}>
                                             <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
-                                                <Typography>Forschungen</Typography>
+                                                <Typography>{c.name} ({c.coord.join(':')})</Typography>
                                             </AccordionSummary>
                                             <AccordionDetails>
-                                                {Object.entries(research).filter(([, v]) => v > 0).length === 0 ? (<Typography>Keine Forschung</Typography>) : (
-                                                    <TableContainer component={Paper} sx={{maxWidth: 400}}>
-                                                        <Table size="small" stickyHeader>
-                                                            <TableHead>
-                                                                <TableRow>
-                                                                    <TableCell sx={{py: 0.5, px: 1}}>Name</TableCell>
-                                                                    <TableCell align="right" sx={{py: 0.5, px: 1}}>Level</TableCell>
-                                                                </TableRow>
-                                                            </TableHead>
-                                                            <TableBody>
-                                                                {Object.entries(research).filter(([, v]) => v > 0).map(([k, v]) => (<TableRow key={k} hover>
-                                                                        <TableCell sx={{py: 0.5, px: 1}}>{locMap[k] || k}</TableCell>
-                                                                        <TableCell align="right" sx={{py: 0.5, px: 1}}>{v}</TableCell>
-                                                                    </TableRow>))}
-                                                            </TableBody>
-                                                        </Table>
-                                                    </TableContainer>)}
+                                                {rpt ? (<Grid container spacing={1}>
+                                                    {['cat900', 'cat0', 'cat400', 'cat200'].map(cat => {
+                                                        const title = cat === 'cat0' ? 'Gebäude' : cat === 'cat200' ? 'Flotte' : cat === 'cat400' ? 'Verteidigung' : 'Ressourcen'
+                                                        const data = Object.entries(rpt[cat] || {}).filter(([, v]) => v > 0)
+                                                        return (<Grid item xs={12} sm={4} key={cat}>
+                                                            <TableContainer component={Paper} variant="outlined">
+                                                                <Table size="small" stickyHeader>
+                                                                    <TableHead>
+                                                                        <TableRow>
+                                                                            <TableCell sx={{py: 0.5, px: 1}}>{title}</TableCell>
+                                                                            <TableCell align="right" sx={{py: 0.5, px: 1}}></TableCell>
+                                                                        </TableRow>
+                                                                    </TableHead>
+                                                                    <TableBody>
+                                                                        {data.map(([k, v]) => (<TableRow key={k} hover>
+                                                                            <TableCell sx={{py: 0.5, px: 1}}>{locMap[k] || k}</TableCell>
+                                                                            <TableCell align="right" sx={{py: 0.5, px: 1}}>{formatNumber(v)}</TableCell>
+                                                                        </TableRow>))}
+                                                                    </TableBody>
+                                                                </Table>
+                                                            </TableContainer>
+                                                        </Grid>)
+                                                    })}
+                                                </Grid>) : (<Typography>Keine Daten</Typography>)}
                                             </AccordionDetails>
-                                        </Accordion>
-
-                                        {/* Planeten & Monde */}
-                                        {['Planeten', 'Monde'].map((lbl, i) => {
-                                            const list = i === 0 ? celestials.planets : celestials.moons
-                                            return (<Accordion key={lbl} defaultExpanded sx={{mb: 2}}>
-                                                    <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
-                                                        <Typography>{lbl}</Typography>
-                                                    </AccordionSummary>
-                                                    <AccordionDetails>
-                                                        {list.filter(c => {
-                                                            const rpt = spyReports[c.id];
-                                                            if (!rpt) return false;
-                                                            // Check any category has data > 0
-                                                            const cats = ['cat900', 'cat0', 'cat400', 'cat200'];
-                                                            return cats.some(cat => Object.values(rpt[cat] || {}).some(v => v > 0));
-                                                        }).map(c => {
-                                                            const rpt = spyReports[c.id]
-                                                            return (<Accordion key={c.id} sx={{mb: 1}}>
-                                                                    <AccordionSummary expandIcon={<ExpandMoreIcon/>}>
-                                                                        <Typography>{c.name} ({c.coord.join(':')})</Typography>
-                                                                    </AccordionSummary>
-                                                                    <AccordionDetails>
-                                                                        {rpt ? (<Grid container spacing={1}>
-                                                                                {['cat900', 'cat0', 'cat400', 'cat200'].map(cat => {
-                                                                                    const title = cat === 'cat0' ? 'Gebäude' : cat === 'cat200' ? 'Flotte' : cat === 'cat400' ? 'Verteidigung' : 'Ressourcen'
-                                                                                    const data = Object.entries(rpt[cat] || {}).filter(([, v]) => v > 0)
-                                                                                    return (<Grid item xs={12} sm={4} key={cat}>
-                                                                                            <TableContainer component={Paper} variant="outlined">
-                                                                                                <Table size="small" stickyHeader>
-                                                                                                    <TableHead>
-                                                                                                        <TableRow>
-                                                                                                            <TableCell sx={{py: 0.5, px: 1}}>{title}</TableCell>
-                                                                                                            <TableCell align="right" sx={{py: 0.5, px: 1}}></TableCell>
-                                                                                                        </TableRow>
-                                                                                                    </TableHead>
-                                                                                                    <TableBody>
-                                                                                                        {data.map(([k, v]) => (<TableRow key={k} hover>
-                                                                                                                <TableCell sx={{py: 0.5, px: 1}}>{locMap[k] || k}</TableCell>
-                                                                                                                <TableCell align="right" sx={{py: 0.5, px: 1}}>{formatNumber(v)}</TableCell>
-                                                                                                            </TableRow>))}
-                                                                                                    </TableBody>
-                                                                                                </Table>
-                                                                                            </TableContainer>
-                                                                                        </Grid>)
-                                                                                })}
-                                                                            </Grid>) : (<Typography>Keine Daten</Typography>)}
-                                                                    </AccordionDetails>
-                                                                </Accordion>)
-                                                        })}
-                                                    </AccordionDetails>
-                                                </Accordion>)
-                                        })}
-                                    </Box>)}
-                            </>)}
-                        {/* Phalanx */}
-                        {tabValue === 1 && (<>
-                                <TextField
-                                    label="System"
-                                    value={phalanxSearch}
-                                    onChange={handlePhalanxChange}
-                                    fullWidth
-                                    sx={{mb: 2}}
-                                />
-                            <Paper>
-                                {phalanxResults.length === 0 ? (
-                                    <Typography sx={{ p: 2 }}>Keine Phalanx</Typography>
-                                ) : (
-                                    phalanxResults.map((r, idx) => (
-                                        <Box
-                                            key={`${r.playerId}_${idx}`}
-                                            sx={{
-                                                p: 1,
-                                                borderBottom: idx < phalanxResults.length - 1 ? '1px solid #333' : 'none',
-                                                color: getStatusColor(playerStatuses[r.playerId]) === 'white' ? (r.allianceId === 643 ? 'lightgreen' : 'white') : getStatusColor(playerStatuses[r.playerId])
-                                            }}
-                                        >
-                                            {r.name} ({r.coord.join(':')})
-                                            {r.alliance ? ` – ${r.alliance}` : ''}
-                                        </Box>
-                                    ))
-                                )}
-                            </Paper>
-                            </>)}
-                    </Container>
-                </Box>)}
-        </>)
+                                        </Accordion>)
+                                    })}
+                                </AccordionDetails>
+                            </Accordion>)
+                        })}
+                    </Box>)}
+                </>)}
+                {/* Phalanx */}
+                {tabValue === 1 && (<>
+                    <TextField
+                        label="System"
+                        value={phalanxSearch}
+                        onChange={handlePhalanxChange}
+                        fullWidth
+                        sx={{mb: 2}}
+                    />
+                    <Paper>
+                        {phalanxResults.length === 0 ? (
+                            <Typography sx={{ p: 2 }}>Keine Phalanx</Typography>
+                        ) : (
+                            phalanxResults.map((r, idx) => (
+                                <Box
+                                    key={`${r.playerId}_${idx}`}
+                                    sx={{
+                                        p: 1,
+                                        borderBottom: idx < phalanxResults.length - 1 ? '1px solid #333' : 'none',
+                                        color: getStatusColor(playerStatuses[r.playerId]) === 'white' ? (r.allianceId === 643 ? 'lightgreen' : 'white') : getStatusColor(playerStatuses[r.playerId])
+                                    }}
+                                >
+                                    {r.name} ({r.coord.join(':')})
+                                    {r.alliance ? ` – ${r.alliance}` : ''}
+                                </Box>
+                            ))
+                        )}
+                    </Paper>
+                </>)}
+            </Container>
+        </Box>)}
+    </>)
 }
