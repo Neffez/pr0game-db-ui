@@ -318,6 +318,7 @@ export default function App() {
         const recMap = Object.fromEntries(states.map(r => [r.id, r]))
         // Build planets and moons with unique IDs
         const planets = states
+            .filter(r => !r.is_destroyed)
             .filter(r => r.planet_id > 0)
             .map(r => ({
                 id: `p_${r.id}`, recId: r.id, name: r.planet_name, coord: [r.pos_galaxy, r.pos_system, r.pos_planet]
