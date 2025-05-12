@@ -19,6 +19,7 @@ import {
     TableBody,
     TableRow,
     TableCell,
+    Tooltip,
     Paper,
     Grid,
     Tabs,
@@ -481,22 +482,17 @@ export default function App() {
                         <Tab label="Phalanx"/>
                     </Tabs>
                     <Box sx={{flexGrow: 1}}/>
-                    <Button color="inherit" onClick={handleExport}>
-                        Export JSON
-                    </Button>|
-                    <IconButton
-                        color="inherit"
-                        component="a"
-                        href="https://github.com/Neffez/pr0game-db-ui"
-                        target="_blank"
-                        rel="noopener"
-                    >
-                        <img
-                            src="/assets/github-mark-white.svg"
-                            alt="GitHub"
-                            style={{width: 22, height: 22}}
-                        />
-                    </IconButton>
+                    <Tooltip title="Download JSON">
+                        <IconButton color="inherit" onClick={handleExport}>
+                            <img src="/assets/download-icon.svg" alt="Download JSON" style={{width: 22, height: 22}}/>
+                        </IconButton>
+                    </Tooltip>
+                    <Box sx={{display: 'flex', width: 5}}/>|<Box sx={{display: 'flex', width: 5}}/>
+                    <Tooltip title="View Code on GitHub">
+                        <IconButton color="inherit" component="a" href="https://github.com/Neffez/pr0game-db-ui" target="_blank" rel="noopener">
+                            <img src="/assets/github-mark-white.svg" alt="GitHub" style={{width: 22, height: 22}}/>
+                        </IconButton>
+                    </Tooltip>
                 </Toolbar>
             </AppBar>
             <Container sx={{mt: 4}}>
