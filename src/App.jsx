@@ -314,12 +314,11 @@ export default function App() {
 
         // Galaxy state
         const states = await pb.collection('galaxy_state').getFullList({
-            filter: pb.filter('player_id = {:pid}', {pid: player.player_id}), sort: 'pos_galaxy,pos_system,pos_planet'
+            filter: pb.filter('player_id = {:pid} && is_destroyed = false', {pid: player.player_id}), sort: 'pos_galaxy,pos_system,pos_planet'
         })
         const recMap = Object.fromEntries(states.map(r => [r.id, r]))
         // Build planets and moons with unique IDs
         const planets = states
-            .filter(r => !r.is_destroyed)
             .filter(r => r.planet_id > 0)
             .map(r => ({
                 id: `p_${r.id}`, recId: r.id, name: r.planet_name, coord: [r.pos_galaxy, r.pos_system, r.pos_planet]
@@ -353,13 +352,13 @@ export default function App() {
     const handleExport = async () => {
         const [galaxyRecs, playerRecs, alliRecs, uniRankRecs] = await Promise.all([
             pb.collection('galaxy_state').getFullList({
-                filter:  'pos_galaxy = 1 && is_destroyed = false',
+                filter:  'is_destroyed = false',
                 sort:    'pos_system,pos_planet',
-                fields:  'pos_system,pos_planet,planet_name,has_moon,player_id'
+                fields:  'pos_galaxy,pos_system,pos_planet,planet_name,has_moon,player_id'
             }),
-            pb.collection('players').getFullList({ fields: 'player_id,player_name,alli_id,updated' }),
-            pb.collection('alliances').getFullList({ fields: 'alli_id,alli_name,updated' }),
-            // pb.collection('uni_rankings').getFullList({ fields: 'player_id,umode,inactive,inactive_long,banned,updated' })
+            pb.collection('players').getFullList(),
+            pb.collection('alliances').getFullList(),
+            // pb.collection('uni_rankings').getFullList()
         ])
 
         // const uniMap = {}
@@ -369,6 +368,7 @@ export default function App() {
         //         uniMap[pid] = r
         //     }
         // })
+        //
         // const computeSpecial = (rank = {}) => {
         //     let s = ''
         //     if (rank.banned) s += 'g'
@@ -395,7 +395,7 @@ export default function App() {
                 const rec = galaxyRecs.find(r =>
                     r.pos_galaxy === 1 && r.pos_system === sys && r.pos_planet === pos
                 )
-                if (!rec || rec.is_destroyed === true) {
+                if (!rec) {
                     slots[pos] = null
                 } else {
                     const p = playerInfoMap[rec.player_id] || {name: '', allianceid: -1, alliancename: '-'}
@@ -406,7 +406,7 @@ export default function App() {
                         name: p.name,
                         allianceid: p.allianceid === -1 ? 0 : p.allianceid,
                         alliancename: p.alliancename,
-                        special: '' //computeSpecial(uniMap[rec.player_id])
+                        special: ''//computeSpecial(uniMap[rec.player_id])
                     }
                 }
             }
