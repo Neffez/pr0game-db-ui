@@ -7,8 +7,9 @@ or use the environment variable.
 
 ---
 ### Features
-* Can search for players and list their data from recent spy_reports.
-* Can search for system and list phalanxes in range
+* Search for players and list their data from recent spy_reports.
+* Search for system and list phalanxes in range
+* Create and download a universe json file to import into pr0game galaxy view
 
 ---
 ### How to run
@@ -25,5 +26,4 @@ or use the environment variable.
 * better project structure
 * currently only implemented for Uni5 (1 galaxy, 400 systems)
 * language selection
-* player stats
 * graphical view of stats over time
