@@ -352,28 +352,31 @@ export default function App() {
 
     const handleExport = async () => {
         const [galaxyRecs, playerRecs, alliRecs, uniRankRecs] = await Promise.all([
-            pb.collection('galaxy_state').getFullList({ sort: 'pos_galaxy,pos_system,pos_planet' }),
-            pb.collection('players').getFullList(),
-            pb.collection('alliances').getFullList(),
-            pb.collection('uni_rankings').getFullList()
+            pb.collection('galaxy_state').getFullList({
+                filter:  'pos_galaxy = 1 && is_destroyed = false',
+                sort:    'pos_system,pos_planet',
+                fields:  'pos_system,pos_planet,planet_name,has_moon,player_id'
+            }),
+            pb.collection('players').getFullList({ fields: 'player_id,player_name,alli_id,updated' }),
+            pb.collection('alliances').getFullList({ fields: 'alli_id,alli_name,updated' }),
+            // pb.collection('uni_rankings').getFullList({ fields: 'player_id,umode,inactive,inactive_long,banned,updated' })
         ])
 
-        const uniMap = {}
-        uniRankRecs.forEach(r => {
-            const pid = r.player_id
-            if (!uniMap[pid] || new Date(r.updated) > new Date(uniMap[pid].updated)) {
-                uniMap[pid] = r
-            }
-        })
-
-        const computeSpecial = (rank = {}) => {
-            let s = ''
-            if (rank.banned) s += 'g'
-            if (rank.umode) s += 'u'
-            if (rank.inactive_long) s += 'I'
-            if (rank.inactive) s += 'i'
-            return s
-        }
+        // const uniMap = {}
+        // uniRankRecs.forEach(r => {
+        //     const pid = r.player_id
+        //     if (!uniMap[pid] || new Date(r.updated) > new Date(uniMap[pid].updated)) {
+        //         uniMap[pid] = r
+        //     }
+        // })
+        // const computeSpecial = (rank = {}) => {
+        //     let s = ''
+        //     if (rank.banned) s += 'g'
+        //     if (rank.umode) s += 'u'
+        //     if (rank.inactive_long) s += 'I'
+        //     if (rank.inactive) s += 'i'
+        //     return s
+        // }
 
         const alliNameMap = Object.fromEntries(alliRecs.map(a => [a.alli_id, a.alli_name]))
         const playerInfoMap = Object.fromEntries(
@@ -403,7 +406,7 @@ export default function App() {
                         name: p.name,
                         allianceid: p.allianceid === -1 ? 0 : p.allianceid,
                         alliancename: p.alliancename,
-                        special: computeSpecial(uniMap[rec.player_id])
+                        special: '' //computeSpecial(uniMap[rec.player_id])
                     }
                 }
             }
