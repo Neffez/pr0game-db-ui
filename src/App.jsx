@@ -8,6 +8,7 @@ import {
     Container,
     TextField,
     Button,
+    IconButton,
     Box,
     Accordion,
     AccordionSummary,
@@ -23,7 +24,7 @@ import {
     Tabs,
     Tab
 } from '@mui/material'
-import { saveAs } from 'file-saver'
+import {saveAs} from 'file-saver'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 
 // Mapping ID → Name
@@ -482,7 +483,20 @@ export default function App() {
                     <Box sx={{flexGrow: 1}}/>
                     <Button color="inherit" onClick={handleExport}>
                         Export JSON
-                    </Button>
+                    </Button>|
+                    <IconButton
+                        color="inherit"
+                        component="a"
+                        href="https://github.com/Neffez/pr0game-db-ui"
+                        target="_blank"
+                        rel="noopener"
+                    >
+                        <img
+                            src="/assets/github-mark-white.svg"
+                            alt="GitHub"
+                            style={{width: 22, height: 22}}
+                        />
+                    </IconButton>
                 </Toolbar>
             </AppBar>
             <Container sx={{mt: 4}}>
