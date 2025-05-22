@@ -109,7 +109,7 @@ export default function StatisticsTab() {
                                 mr: theme.spacing(1)
                             }} />
                             <Typography variant="body2" sx={{ color: '#fff', fontSize: '0.75rem' }}>
-                                {entry.name}: {entry.value}
+                                {entry.name}: {formatNumber(entry.value)}
                             </Typography>
                         </Box>
                     ))}
