@@ -10,6 +10,7 @@ import {
     Tooltip,
     Legend
 } from 'recharts';
+import formatNumber from "./formatNumber";
 
 export default function StatisticsTab() {
     const theme = useTheme();
@@ -18,6 +19,12 @@ export default function StatisticsTab() {
     const [data, setData] = useState([]);
     const [alliances, setAlliances] = useState([]);
     const [selectedAlliances, setSelectedAlliances] = useState([]);
+
+    const formatDateTime = (dateStr, withoutYear) => {
+        const d = new Date(dateStr);
+        const pad = (n) => n.toString().padStart(2, '0');
+        return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${withoutYear === false ? d.getFullYear() : ""} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
 
     useEffect(() => {
         const fetchStats = async () => {
@@ -90,7 +97,7 @@ export default function StatisticsTab() {
                     padding: theme.spacing(1)
                 }}>
                     <Typography variant="caption" sx={{ color: '#fff', mb: 0.5 }}>
-                        {label}
+                        {formatDateTime(label, false)}
                     </Typography>
                     {payload.map((entry, index) => (
                         <Box key={index} sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
@@ -132,8 +139,16 @@ export default function StatisticsTab() {
                 style={{ backgroundColor: 'rgba(0,0,0,0.9)', borderRadius: 10, padding: '8px' }}
             >
                 <LineChart data={data} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                    <XAxis dataKey="date" />
-                    <YAxis domain={[ 'dataMin', 'auto' ]} />
+                    <XAxis
+                        dataKey="date"
+                        tickFormatter={formatDateTime}
+                        tick={{ fontSize: 12 }}
+                    />
+                    <YAxis
+                        domain={[ 'dataMin', 'auto' ]}
+                        tickFormatter={formatNumber}
+                        tick={{  fontSize: 15 }}
+                    />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend onClick={handleLegendClick} />
                     {alliances.map((a, idx) => (

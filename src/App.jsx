@@ -28,6 +28,7 @@ import {
 import StatisticsTab from './StatisticsTab';
 import {saveAs} from 'file-saver'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import formatNumber from "./formatNumber";
 
 // Mapping ID → Name
 const locMap = {
@@ -105,10 +106,6 @@ function getStatusColor(ranking) {
     if (ranking.umode) return '#497290';         // U-Mode
     if (ranking.inactive || ranking.inactive_long) return '#999999';         // inactive
     return 'white';
-}
-
-function formatNumber(number) {
-    return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")
 }
 
 export default function App() {
