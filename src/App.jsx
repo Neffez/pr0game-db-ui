@@ -25,6 +25,7 @@ import {
     Tabs,
     Tab
 } from '@mui/material'
+import StatisticsTab from './StatisticsTab';
 import {saveAs} from 'file-saver'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 
@@ -436,6 +437,14 @@ export default function App() {
         saveAs(blob, `export_${Date.now()}.json`)
     }
 
+    const handleLogin = async () => {
+        try {
+            const auth = await pb.collection('users').authWithPassword(username, password)
+            setUser(auth.record)
+        } catch {
+            alert('Login fehlgeschlagen')
+        }
+    }
 
     // Render login or main UI
     return (<>
@@ -456,18 +465,21 @@ export default function App() {
             }}
         />
         {!user ? (<Container maxWidth="sm" sx={{mt: 4}}>
-            <Typography variant="h4" gutterBottom>Login</Typography>
+            <Box sx={{display: 'flex'}}>
+                <Typography variant="h4" gutterBottom>Login</Typography>
+                <Box sx={{flexGrow: 1}}/>
+                <Tooltip title="View Code on GitHub">
+                    <IconButton color="inherit" component="a" href="https://github.com/Neffez/pr0game-db-ui" target="_blank" rel="noopener">
+                        <img src="/assets/github-mark-white.svg" alt="GitHub" style={{width: 22, height: 22}}/>
+                    </IconButton>
+                </Tooltip>
+            </Box>
             <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
                 <TextField label="Benutzername" value={username} onChange={e => setUsername(e.target.value)} fullWidth/>
-                <TextField label="Passwort" type="password" value={password} onChange={e => setPassword(e.target.value)} fullWidth/>
-                <Button variant="contained" onClick={async () => {
-                    try {
-                        const auth = await pb.collection('users').authWithPassword(username, password)
-                        setUser(auth.record)
-                    } catch {
-                        alert('Login fehlgeschlagen')
-                    }
-                }}>Login</Button>
+                <TextField label="Passwort" type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={(e) => (
+                    e.key === 'Enter' ? handleLogin() : null
+                )} fullWidth/>
+                <Button variant="contained" onClick={handleLogin}>Login</Button>
             </Box>
         </Container>) : (<Box sx={{position: 'relative', zIndex: 0}}>
             <AppBar position="static">
@@ -480,6 +492,7 @@ export default function App() {
                     >
                         <Tab label="Spielersuche"/>
                         <Tab label="Phalanx"/>
+                        <Tab label="Allianzen" />
                     </Tabs>
                     <Box sx={{flexGrow: 1}}/>
                     <Tooltip title="Download JSON">
@@ -649,6 +662,9 @@ export default function App() {
                         )}
                     </Paper>
                 </>)}
+                {/* Statistik */}
+                {tabValue === 2 &&
+                    <StatisticsTab/>}
             </Container>
         </Box>)}
     </>)
