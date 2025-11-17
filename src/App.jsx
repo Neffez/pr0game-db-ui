@@ -79,6 +79,9 @@ const locMap = {
     "213": "Zerstörer",
     "214": "Todesstern",
     "215": "Schlachtkreuzer",
+    "222": "Schwerer Kreuzer",
+    "225": "Sturmtransporter",
+    "227": "Optimierter Recycler",
     "106": "Spionagetechnik",
     "108": "Computertechnik",
     "109": "Waffentechnik",
@@ -151,12 +154,12 @@ export default function App() {
             setPlayerStatuses({})
             return
         }
-        
+
         // Search by player name
         const nameResults = await pb.collection('players').getFullList({
             filter: pb.filter('player_name ~ {:s}', {s: val}), sort: 'player_name'
         })
-        
+
         // Check if input is a number - if yes, also search by system
         const systemNum = parseInt(val, 10)
         let systemResults = []
@@ -165,10 +168,10 @@ export default function App() {
             const galaxyStates = await pb.collection('galaxy_state').getFullList({
                 filter: pb.filter('pos_system = {:sys} && is_destroyed = false', {sys: systemNum})
             })
-            
+
             // Get unique player IDs from galaxy states
             const playerIdsInSystem = [...new Set(galaxyStates.map(g => g.player_id).filter(id => id > 0))]
-            
+
             if (playerIdsInSystem.length > 0) {
                 // Fetch all players with these IDs
                 const filterStr = playerIdsInSystem.map(id => `player_id = ${id}`).join(' || ')
@@ -178,13 +181,13 @@ export default function App() {
                 })
             }
         }
-        
+
         // Merge results and deduplicate by player_id
         const allResults = [...nameResults, ...systemResults]
         const uniqueResults = Array.from(
             new Map(allResults.map(p => [p.player_id, p])).values()
         )
-        
+
         const ids = uniqueResults.map(p => p.player_id)
         if (ids.length) {
             const filterStr = ids.map(id => `player_id = ${id}`).join(' || ')
