@@ -151,11 +151,41 @@ export default function App() {
             setPlayerStatuses({})
             return
         }
-        if (!val) return setPlayers([])
-        const res = await pb.collection('players').getFullList({
+        
+        // Search by player name
+        const nameResults = await pb.collection('players').getFullList({
             filter: pb.filter('player_name ~ {:s}', {s: val}), sort: 'player_name'
         })
-        const ids = res.map(p => p.player_id)          // [1, 42, 133, …]
+        
+        // Check if input is a number - if yes, also search by system
+        const systemNum = parseInt(val, 10)
+        let systemResults = []
+        if (!isNaN(systemNum) && systemNum >= 1 && systemNum <= 400) {
+            // Find all galaxy_state records with this system number
+            const galaxyStates = await pb.collection('galaxy_state').getFullList({
+                filter: pb.filter('pos_system = {:sys} && is_destroyed = false', {sys: systemNum})
+            })
+            
+            // Get unique player IDs from galaxy states
+            const playerIdsInSystem = [...new Set(galaxyStates.map(g => g.player_id).filter(id => id > 0))]
+            
+            if (playerIdsInSystem.length > 0) {
+                // Fetch all players with these IDs
+                const filterStr = playerIdsInSystem.map(id => `player_id = ${id}`).join(' || ')
+                systemResults = await pb.collection('players').getFullList({
+                    filter: filterStr,
+                    sort: 'player_name'
+                })
+            }
+        }
+        
+        // Merge results and deduplicate by player_id
+        const allResults = [...nameResults, ...systemResults]
+        const uniqueResults = Array.from(
+            new Map(allResults.map(p => [p.player_id, p])).values()
+        )
+        
+        const ids = uniqueResults.map(p => p.player_id)
         if (ids.length) {
             const filterStr = ids.map(id => `player_id = ${id}`).join(' || ')
             const ranks = await pb.collection('uni_rankings').getFullList({
@@ -170,7 +200,7 @@ export default function App() {
             setPlayerStatuses({})
         }
 
-        setPlayers(res)
+        setPlayers(uniqueResults)
     }, 300), [])
 
     const handleSearchChange = e => {
